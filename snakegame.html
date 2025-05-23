@@ -1,0 +1,523 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Snake Game</title>
+  <meta name="viewport" content="width=600">
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- Google Fonts: Fredoka -->
+  <link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@700&display=swap" rel="stylesheet">
+  <style>
+    body {
+      background: radial-gradient(ellipse at top left, #362359 0%, #180f2a 100%);
+      min-height: 100vh;
+    }
+    .fredoka {
+      font-family: 'Fredoka', sans-serif;
+    }
+    .level-btn.active {
+      box-shadow: 0 0 16px 4px #10b98180;
+      background: #10b981 !important;
+      color: #fff !important;
+    }
+    #game-board {
+      box-shadow: 0 8px 32px #0006;
+      background: #161e2e;
+      border-radius: 16px;
+      display: block;
+      margin: 0 auto;
+    }
+    .game-over-overlay {
+      background: rgba(16, 24, 39, 0.7);
+      backdrop-filter: blur(2px);
+    }
+  </style>
+</head>
+<body>
+  <div class="flex flex-col items-center min-h-screen justify-center px-2">
+    <!-- Top bar: Heading and Score -->
+    <div class="flex justify-between w-full max-w-2xl mb-3 mt-8">
+      <h1 class="fredoka text-2xl text-white font-bold">Snake Game</h1>
+      <div class="text-white text-lg">Score: <span id="score" class="font-bold">0</span></div>
+    </div>
+
+    <!-- Main game area -->
+    <div class="w-full max-w-2xl flex flex-col items-center">
+      <!-- Level selection -->
+      <div class="flex flex-wrap justify-center gap-2 mb-4">
+        <button class="level-btn bg-slate-700 hover:bg-slate-600 text-white px-4 py-1 rounded-lg text-base transition-all" data-level="1">Level 1</button>
+        <button class="level-btn bg-slate-700 hover:bg-slate-600 text-white px-4 py-1 rounded-lg text-base transition-all" data-level="2">Level 2</button>
+        <button class="level-btn bg-slate-700 hover:bg-slate-600 text-white px-4 py-1 rounded-lg text-base transition-all" data-level="3">Level 3</button>
+        <button class="level-btn bg-slate-700 hover:bg-slate-600 text-white px-4 py-1 rounded-lg text-base transition-all" data-level="4">Level 4</button>
+        <button class="level-btn bg-slate-700 hover:bg-slate-600 text-white px-4 py-1 rounded-lg text-base transition-all" data-level="5">Level 5</button>
+      </div>
+      <!-- Game board -->
+      <canvas id="game-board" width="500" height="500" class="mb-6"></canvas>
+      <!-- Start/reset buttons -->
+      <div class="flex space-x-6 mb-6">
+        <button id="start-btn" class="fredoka bg-emerald-500 hover:bg-emerald-600 text-white px-8 py-2 rounded-lg text-lg font-bold shadow-lg transition-all">Start Game</button>
+        <button id="reset-btn" class="fredoka bg-slate-600 hover:bg-slate-700 text-white px-8 py-2 rounded-lg text-lg font-bold shadow-lg transition-all">Reset</button>
+      </div>
+      <!-- Legend -->
+      <div class="text-white text-base mb-2 bg-slate-800 px-6 py-3 rounded-lg shadow w-fit">
+        <p class="mb-1 flex items-center"><span class="text-red-400 text-lg mr-2">●</span> Regular food: +1 point & grow longer</p>
+        <p class="flex items-center"><span class="text-yellow-400 text-lg mr-2">●</span> Bonus food: +10 points (no growth)</p>
+      </div>
+    </div>
+
+    <!-- Mobile controls -->
+    <div class="mobile-controls mt-6 grid grid-cols-3 gap-2 md:hidden w-full max-w-xs">
+      <div></div>
+      <button class="control-btn bg-slate-700 text-white p-4 rounded-lg text-2xl" data-direction="up">↑</button>
+      <div></div>
+      <button class="control-btn bg-slate-700 text-white p-4 rounded-lg text-2xl" data-direction="left">←</button>
+      <div></div>
+      <button class="control-btn bg-slate-700 text-white p-4 rounded-lg text-2xl" data-direction="right">→</button>
+      <div></div>
+      <button class="control-btn bg-slate-700 text-white p-4 rounded-lg text-2xl" data-direction="down">↓</button>
+      <div></div>
+    </div>
+
+    <!-- Game Over Modal -->
+    <div id="game-over" class="game-over-overlay fixed inset-0 flex items-center justify-center z-50 hidden">
+      <div class="bg-slate-800 p-8 rounded-xl shadow-2xl text-center max-w-sm mx-4">
+        <h2 class="text-red-500 text-3xl font-bold mb-2">Game Over!</h2>
+        <p class="text-white text-lg mb-4">Your score: <span id="final-score" class="font-bold">0</span></p>
+        <button id="play-again" class="fredoka bg-emerald-500 hover:bg-emerald-600 text-white px-6 py-3 rounded-lg font-bold shadow transition-all">Play Again</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    document.addEventListener('DOMContentLoaded', () => {
+      const canvas = document.getElementById('game-board');
+      const ctx = canvas.getContext('2d');
+      const startBtn = document.getElementById('start-btn');
+      const resetBtn = document.getElementById('reset-btn');
+      const scoreElement = document.getElementById('score');
+      const gameOverModal = document.getElementById('game-over');
+      const finalScoreElement = document.getElementById('final-score');
+      const playAgainBtn = document.getElementById('play-again');
+      const mobileControls = document.querySelectorAll('.control-btn');
+      const levelButtons = document.querySelectorAll('.level-btn');
+      
+      const gridSize = 20;
+      const tileCount = canvas.width / gridSize;
+
+      // Updated speed levels as per request
+      const speedLevels = {
+        1: 200, // Slowest
+        2: 150,
+        3: 120,
+        4: 90,
+        5: 60   // Fastest
+      };
+
+      let snake = [];
+      let food = {};
+      let bonusFood = null;
+      let dx = 0;
+      let dy = 0;
+      let score = 0;
+      let gameSpeed = speedLevels[1];
+      let gameRunning = false;
+      let gameLoop;
+      let currentLevel = 1;
+      let bonusFoodTimer = null;
+
+      function initGame() {
+        snake = [
+          {x: Math.floor(tileCount / 2), y: Math.floor(tileCount / 2)}
+        ];
+        placeFood();
+        bonusFood = null;
+        score = 0;
+        dx = 0;
+        dy = 0;
+        gameSpeed = speedLevels[currentLevel];
+        scoreElement.textContent = score;
+
+        updateLevelButtons();
+      }
+
+      function updateLevelButtons() {
+        levelButtons.forEach(btn => {
+          const level = parseInt(btn.getAttribute('data-level'));
+          if (level === currentLevel) {
+            btn.classList.add('active');
+            btn.classList.remove('bg-slate-700');
+            btn.classList.add('bg-emerald-600');
+          } else {
+            btn.classList.remove('active');
+            btn.classList.remove('bg-emerald-600');
+            btn.classList.add('bg-slate-700');
+          }
+        });
+      }
+
+      function placeFood() {
+        food = {
+          x: Math.floor(Math.random() * tileCount),
+          y: Math.floor(Math.random() * tileCount)
+        };
+        while (checkFoodCollision(food)) {
+          food = {
+            x: Math.floor(Math.random() * tileCount),
+            y: Math.floor(Math.random() * tileCount)
+          };
+        }
+      }
+
+      function placeBonusFood() {
+        if (bonusFood) return;
+        bonusFood = {
+          x: Math.floor(Math.random() * tileCount),
+          y: Math.floor(Math.random() * tileCount)
+        };
+        while (checkFoodCollision(bonusFood)) {
+          bonusFood = {
+            x: Math.floor(Math.random() * tileCount),
+            y: Math.floor(Math.random() * tileCount)
+          };
+        }
+        if (bonusFoodTimer) clearTimeout(bonusFoodTimer);
+        bonusFoodTimer = setTimeout(() => {
+          bonusFood = null;
+        }, 5000);
+      }
+
+      function checkFoodCollision(foodItem) {
+        for (let cell of snake) {
+          if (cell.x === foodItem.x && cell.y === foodItem.y) {
+            return true;
+          }
+        }
+        if (food && foodItem !== food && food.x === foodItem.x && food.y === foodItem.y) {
+          return true;
+        }
+        if (bonusFood && foodItem !== bonusFood && bonusFood.x === foodItem.x && bonusFood.y === foodItem.y) {
+          return true;
+        }
+        return false;
+      }
+
+      function draw() {
+        // Clear canvas
+        ctx.fillStyle = '#0f172a';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        // Draw grid lines
+        ctx.strokeStyle = '#1e293b';
+        ctx.lineWidth = 0.5;
+        for (let i = 0; i <= tileCount; i++) {
+          ctx.beginPath();
+          ctx.moveTo(i * gridSize, 0);
+          ctx.lineTo(i * gridSize, canvas.height);
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.moveTo(0, i * gridSize);
+          ctx.lineTo(canvas.width, i * gridSize);
+          ctx.stroke();
+        }
+
+        // Draw level indicator
+        ctx.fillStyle = '#fff';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText(`Level: ${currentLevel}`, 10, 20);
+
+        // Draw regular food
+        ctx.fillStyle = '#ef4444';
+        ctx.beginPath();
+        ctx.arc(
+          food.x * gridSize + gridSize/2, 
+          food.y * gridSize + gridSize/2, 
+          gridSize/2 - 2, 
+          0, 
+          Math.PI * 2
+        );
+        ctx.fill();
+
+        // Draw bonus food
+        if (bonusFood) {
+          const pulseSize = Math.sin(Date.now() / 200) * 2 + 8;
+          ctx.shadowColor = '#eab308';
+          ctx.shadowBlur = 15;
+          ctx.fillStyle = '#eab308';
+          ctx.beginPath();
+          ctx.arc(
+            bonusFood.x * gridSize + gridSize/2, 
+            bonusFood.y * gridSize + gridSize/2, 
+            gridSize/2 - pulseSize/2, 
+            0, 
+            Math.PI * 2
+          );
+          ctx.fill();
+          ctx.shadowBlur = 0;
+
+          // Draw star shape inside
+          ctx.fillStyle = '#fef08a';
+          ctx.beginPath();
+          const centerX = bonusFood.x * gridSize + gridSize/2;
+          const centerY = bonusFood.y * gridSize + gridSize/2;
+          const spikes = 5;
+          const outerRadius = gridSize/4;
+          const innerRadius = gridSize/8;
+          let rot = Math.PI / 2 * 3;
+          let x = centerX;
+          let y = centerY;
+          const step = Math.PI / spikes;
+          ctx.moveTo(centerX, centerY - outerRadius);
+
+          for (let i = 0; i < spikes; i++) {
+            x = centerX + Math.cos(rot) * outerRadius;
+            y = centerY + Math.sin(rot) * outerRadius;
+            ctx.lineTo(x, y);
+            rot += step;
+
+            x = centerX + Math.cos(rot) * innerRadius;
+            y = centerY + Math.sin(rot) * innerRadius;
+            ctx.lineTo(x, y);
+            rot += step;
+          }
+          ctx.lineTo(centerX, centerY - outerRadius);
+          ctx.closePath();
+          ctx.fill();
+        }
+
+        // Draw snake
+        snake.forEach((cell, index) => {
+          if (index === 0) {
+            ctx.fillStyle = '#10b981';
+          } else {
+            ctx.fillStyle = `#22c55e`;
+          }
+          ctx.fillRect(
+            cell.x * gridSize + 1, 
+            cell.y * gridSize + 1, 
+            gridSize - 2, 
+            gridSize - 2
+          );
+          // Eyes
+          if (index === 0) {
+            ctx.fillStyle = '#000';
+            let leftEyeX, leftEyeY, rightEyeX, rightEyeY;
+            if (dx === 1) {
+              leftEyeX = cell.x * gridSize + gridSize * 0.7;
+              leftEyeY = cell.y * gridSize + gridSize * 0.3;
+              rightEyeX = cell.x * gridSize + gridSize * 0.7;
+              rightEyeY = cell.y * gridSize + gridSize * 0.7;
+            } else if (dx === -1) {
+              leftEyeX = cell.x * gridSize + gridSize * 0.3;
+              leftEyeY = cell.y * gridSize + gridSize * 0.3;
+              rightEyeX = cell.x * gridSize + gridSize * 0.3;
+              rightEyeY = cell.y * gridSize + gridSize * 0.7;
+            } else if (dy === -1) {
+              leftEyeX = cell.x * gridSize + gridSize * 0.3;
+              leftEyeY = cell.y * gridSize + gridSize * 0.3;
+              rightEyeX = cell.x * gridSize + gridSize * 0.7;
+              rightEyeY = cell.y * gridSize + gridSize * 0.3;
+            } else if (dy === 1) {
+              leftEyeX = cell.x * gridSize + gridSize * 0.3;
+              leftEyeY = cell.y * gridSize + gridSize * 0.7;
+              rightEyeX = cell.x * gridSize + gridSize * 0.7;
+              rightEyeY = cell.y * gridSize + gridSize * 0.7;
+            } else {
+              leftEyeX = cell.x * gridSize + gridSize * 0.7;
+              leftEyeY = cell.y * gridSize + gridSize * 0.3;
+              rightEyeX = cell.x * gridSize + gridSize * 0.7;
+              rightEyeY = cell.y * gridSize + gridSize * 0.7;
+            }
+            ctx.beginPath();
+            ctx.arc(leftEyeX, leftEyeY, gridSize/10, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.beginPath();
+            ctx.arc(rightEyeX, rightEyeY, gridSize/10, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        });
+      }
+
+      function update() {
+        if (!gameRunning) return;
+        const head = {
+          x: snake[0].x + dx,
+          y: snake[0].y + dy
+        };
+        // Wrap around
+        if (head.x < 0) {
+          head.x = tileCount - 1;
+        } else if (head.x >= tileCount) {
+          head.x = 0;
+        }
+        if (head.y < 0) {
+          head.y = tileCount - 1;
+        } else if (head.y >= tileCount) {
+          head.y = 0;
+        }
+        if (checkSelfCollision(head)) {
+          gameOver();
+          return;
+        }
+        snake.unshift(head);
+
+        // Eat food
+        if (head.x === food.x && head.y === food.y) {
+          score += 1;
+          scoreElement.textContent = score;
+          placeFood();
+          if (score % 10 === 0) {
+            placeBonusFood();
+          }
+        } else if (bonusFood && head.x === bonusFood.x && head.y === bonusFood.y) {
+          score += 10;
+          scoreElement.textContent = score;
+          bonusFood = null;
+          if (bonusFoodTimer) clearTimeout(bonusFoodTimer);
+          showScoreAnimation("+10", head.x, head.y);
+          snake.pop(); // no growth
+        } else {
+          snake.pop();
+        }
+        draw();
+      }
+
+      function showScoreAnimation(text, x, y) {
+        const scoreDiv = document.createElement('div');
+        scoreDiv.textContent = text;
+        scoreDiv.style.position = 'absolute';
+        const rect = canvas.getBoundingClientRect();
+        scoreDiv.style.left = `${rect.left + x * gridSize}px`;
+        scoreDiv.style.top = `${rect.top + y * gridSize - 20}px`;
+        scoreDiv.style.color = '#fbbf24';
+        scoreDiv.style.fontWeight = 'bold';
+        scoreDiv.style.fontSize = '18px';
+        scoreDiv.style.textShadow = '0 0 5px rgba(0,0,0,0.7)';
+        scoreDiv.style.transition = 'all 1s ease-out';
+        scoreDiv.style.opacity = '1';
+        scoreDiv.style.zIndex = '100';
+        document.body.appendChild(scoreDiv);
+        setTimeout(() => {
+          scoreDiv.style.transform = 'translateY(-30px)';
+          scoreDiv.style.opacity = '0';
+        }, 50);
+        setTimeout(() => {
+          document.body.removeChild(scoreDiv);
+        }, 1000);
+      }
+
+      function checkSelfCollision(head) {
+        for (let i = 1; i < snake.length; i++) {
+          if (head.x === snake[i].x && head.y === snake[i].y) {
+            return true;
+          }
+        }
+        return false;
+      }
+
+      function gameOver() {
+        clearInterval(gameLoop);
+        gameRunning = false;
+        finalScoreElement.textContent = score;
+        gameOverModal.classList.remove('hidden');
+        startBtn.textContent = 'Start Game';
+        if (bonusFoodTimer) clearTimeout(bonusFoodTimer);
+      }
+
+      function startGame() {
+        if (!gameRunning) {
+          gameRunning = true;
+          gameLoop = setInterval(update, gameSpeed);
+          startBtn.textContent = 'Pause';
+        } else {
+          gameRunning = false;
+          clearInterval(gameLoop);
+          startBtn.textContent = 'Resume';
+        }
+      }
+
+      function resetGame() {
+        clearInterval(gameLoop);
+        gameRunning = false;
+        startBtn.textContent = 'Start Game';
+        gameOverModal.classList.add('hidden');
+        if (bonusFoodTimer) clearTimeout(bonusFoodTimer);
+        initGame();
+        draw();
+      }
+
+      function changeLevel(level) {
+        currentLevel = level;
+        gameSpeed = speedLevels[level];
+        if (gameRunning) {
+          clearInterval(gameLoop);
+          gameLoop = setInterval(update, gameSpeed);
+        }
+        updateLevelButtons();
+      }
+
+      // Event listeners
+      startBtn.addEventListener('click', startGame);
+      resetBtn.addEventListener('click', resetGame);
+      playAgainBtn.addEventListener('click', () => {
+        gameOverModal.classList.add('hidden');
+        resetGame();
+      });
+      levelButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const level = parseInt(btn.getAttribute('data-level'));
+          changeLevel(level);
+        });
+      });
+
+      document.addEventListener('keydown', (e) => {
+        if (!gameRunning && (e.key === 'ArrowUp' || e.key === 'ArrowDown' || 
+            e.key === 'ArrowLeft' || e.key === 'ArrowRight')) {
+          startGame();
+        }
+        if (e.key === 'ArrowUp' && dy !== 1) {
+          dx = 0;
+          dy = -1;
+        } else if (e.key === 'ArrowDown' && dy !== -1) {
+          dx = 0;
+          dy = 1;
+        } else if (e.key === 'ArrowLeft' && dx !== 1) {
+          dx = -1;
+          dy = 0;
+        } else if (e.key === 'ArrowRight' && dx !== -1) {
+          dx = 1;
+          dy = 0;
+        }
+      });
+
+      mobileControls.forEach(btn => {
+        btn.addEventListener('click', () => {
+          const direction = btn.getAttribute('data-direction');
+          if (!gameRunning) {
+            startGame();
+          }
+          if (direction === 'up' && dy !== 1) {
+            dx = 0;
+            dy = -1;
+          } else if (direction === 'down' && dy !== -1) {
+            dx = 0;
+            dy = 1;
+          } else if (direction === 'left' && dx !== 1) {
+            dx = -1;
+            dy = 0;
+          } else if (direction === 'right' && dx !== -1) {
+            dx = 1;
+            dy = 0;
+          }
+        });
+      });
+
+      // Initialize and draw initial state
+      initGame();
+      draw();
+    });
+  </script>
+</body>
+</html>
